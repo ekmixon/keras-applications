@@ -64,7 +64,7 @@ def dense_block(x, blocks, name):
         output tensor for the block.
     """
     for i in range(blocks):
-        x = conv_block(x, 32, name=name + '_block' + str(i + 1))
+        x = conv_block(x, 32, name=f'{name}_block{str(i + 1)}')
     return x
 
 
@@ -80,13 +80,19 @@ def transition_block(x, reduction, name):
         output tensor for the block.
     """
     bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
-    x = layers.BatchNormalization(axis=bn_axis, epsilon=1.001e-5,
-                                  name=name + '_bn')(x)
-    x = layers.Activation('relu', name=name + '_relu')(x)
-    x = layers.Conv2D(int(backend.int_shape(x)[bn_axis] * reduction), 1,
-                      use_bias=False,
-                      name=name + '_conv')(x)
-    x = layers.AveragePooling2D(2, strides=2, name=name + '_pool')(x)
+    x = layers.BatchNormalization(
+        axis=bn_axis, epsilon=1.001e-5, name=f'{name}_bn'
+    )(x)
+
+    x = layers.Activation('relu', name=f'{name}_relu')(x)
+    x = layers.Conv2D(
+        int(backend.int_shape(x)[bn_axis] * reduction),
+        1,
+        use_bias=False,
+        name=f'{name}_conv',
+    )(x)
+
+    x = layers.AveragePooling2D(2, strides=2, name=f'{name}_pool')(x)
     return x
 
 
@@ -102,21 +108,25 @@ def conv_block(x, growth_rate, name):
         Output tensor for the block.
     """
     bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
-    x1 = layers.BatchNormalization(axis=bn_axis,
-                                   epsilon=1.001e-5,
-                                   name=name + '_0_bn')(x)
-    x1 = layers.Activation('relu', name=name + '_0_relu')(x1)
-    x1 = layers.Conv2D(4 * growth_rate, 1,
-                       use_bias=False,
-                       name=name + '_1_conv')(x1)
-    x1 = layers.BatchNormalization(axis=bn_axis, epsilon=1.001e-5,
-                                   name=name + '_1_bn')(x1)
-    x1 = layers.Activation('relu', name=name + '_1_relu')(x1)
-    x1 = layers.Conv2D(growth_rate, 3,
-                       padding='same',
-                       use_bias=False,
-                       name=name + '_2_conv')(x1)
-    x = layers.Concatenate(axis=bn_axis, name=name + '_concat')([x, x1])
+    x1 = layers.BatchNormalization(
+        axis=bn_axis, epsilon=1.001e-5, name=f'{name}_0_bn'
+    )(x)
+
+    x1 = layers.Activation('relu', name=f'{name}_0_relu')(x1)
+    x1 = layers.Conv2D(
+        4 * growth_rate, 1, use_bias=False, name=f'{name}_1_conv'
+    )(x1)
+
+    x1 = layers.BatchNormalization(
+        axis=bn_axis, epsilon=1.001e-5, name=f'{name}_1_bn'
+    )(x1)
+
+    x1 = layers.Activation('relu', name=f'{name}_1_relu')(x1)
+    x1 = layers.Conv2D(
+        growth_rate, 3, padding='same', use_bias=False, name=f'{name}_2_conv'
+    )(x1)
+
+    x = layers.Concatenate(axis=bn_axis, name=f'{name}_concat')([x, x1])
     return x
 
 
@@ -176,7 +186,7 @@ def DenseNet(blocks,
     global backend, layers, models, keras_utils
     backend, layers, models, keras_utils = get_submodules_from_kwargs(kwargs)
 
-    if not (weights in {'imagenet', None} or os.path.exists(weights)):
+    if weights not in {'imagenet', None} and not os.path.exists(weights):
         raise ValueError('The `weights` argument should be either '
                          '`None` (random initialization), `imagenet` '
                          '(pre-training on ImageNet), '
@@ -197,10 +207,11 @@ def DenseNet(blocks,
     if input_tensor is None:
         img_input = layers.Input(shape=input_shape)
     else:
-        if not backend.is_keras_tensor(input_tensor):
-            img_input = layers.Input(tensor=input_tensor, shape=input_shape)
-        else:
-            img_input = input_tensor
+        img_input = (
+            input_tensor
+            if backend.is_keras_tensor(input_tensor)
+            else layers.Input(tensor=input_tensor, shape=input_shape)
+        )
 
     bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
 
@@ -227,11 +238,10 @@ def DenseNet(blocks,
     if include_top:
         x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
         x = layers.Dense(classes, activation='softmax', name='fc1000')(x)
-    else:
-        if pooling == 'avg':
-            x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
-        elif pooling == 'max':
-            x = layers.GlobalMaxPooling2D(name='max_pool')(x)
+    elif pooling == 'avg':
+        x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
+    elif pooling == 'max':
+        x = layers.GlobalMaxPooling2D(name='max_pool')(x)
 
     # Ensure that the model takes into account
     # any potential predecessors of `input_tensor`.
@@ -271,25 +281,24 @@ def DenseNet(blocks,
                     DENSENET201_WEIGHT_PATH,
                     cache_subdir='models',
                     file_hash='1ceb130c1ea1b78c3bf6114dbdfd8807')
-        else:
-            if blocks == [6, 12, 24, 16]:
-                weights_path = keras_utils.get_file(
-                    'densenet121_weights_tf_dim_ordering_tf_kernels_notop.h5',
-                    DENSENET121_WEIGHT_PATH_NO_TOP,
-                    cache_subdir='models',
-                    file_hash='30ee3e1110167f948a6b9946edeeb738')
-            elif blocks == [6, 12, 32, 32]:
-                weights_path = keras_utils.get_file(
-                    'densenet169_weights_tf_dim_ordering_tf_kernels_notop.h5',
-                    DENSENET169_WEIGHT_PATH_NO_TOP,
-                    cache_subdir='models',
-                    file_hash='b8c4d4c20dd625c148057b9ff1c1176b')
-            elif blocks == [6, 12, 48, 32]:
-                weights_path = keras_utils.get_file(
-                    'densenet201_weights_tf_dim_ordering_tf_kernels_notop.h5',
-                    DENSENET201_WEIGHT_PATH_NO_TOP,
-                    cache_subdir='models',
-                    file_hash='c13680b51ded0fb44dff2d8f86ac8bb1')
+        elif blocks == [6, 12, 24, 16]:
+            weights_path = keras_utils.get_file(
+                'densenet121_weights_tf_dim_ordering_tf_kernels_notop.h5',
+                DENSENET121_WEIGHT_PATH_NO_TOP,
+                cache_subdir='models',
+                file_hash='30ee3e1110167f948a6b9946edeeb738')
+        elif blocks == [6, 12, 32, 32]:
+            weights_path = keras_utils.get_file(
+                'densenet169_weights_tf_dim_ordering_tf_kernels_notop.h5',
+                DENSENET169_WEIGHT_PATH_NO_TOP,
+                cache_subdir='models',
+                file_hash='b8c4d4c20dd625c148057b9ff1c1176b')
+        elif blocks == [6, 12, 48, 32]:
+            weights_path = keras_utils.get_file(
+                'densenet201_weights_tf_dim_ordering_tf_kernels_notop.h5',
+                DENSENET201_WEIGHT_PATH_NO_TOP,
+                cache_subdir='models',
+                file_hash='c13680b51ded0fb44dff2d8f86ac8bb1')
         model.load_weights(weights_path)
     elif weights is not None:
         model.load_weights(weights)

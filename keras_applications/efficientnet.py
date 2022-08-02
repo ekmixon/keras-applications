@@ -142,72 +142,99 @@ def block(inputs, activation_fn=swish, drop_rate=0., name='',
     # Expansion phase
     filters = filters_in * expand_ratio
     if expand_ratio != 1:
-        x = layers.Conv2D(filters, 1,
-                          padding='same',
-                          use_bias=False,
-                          kernel_initializer=CONV_KERNEL_INITIALIZER,
-                          name=name + 'expand_conv')(inputs)
-        x = layers.BatchNormalization(axis=bn_axis, name=name + 'expand_bn')(x)
-        x = layers.Activation(activation_fn, name=name + 'expand_activation')(x)
+        x = layers.Conv2D(
+            filters,
+            1,
+            padding='same',
+            use_bias=False,
+            kernel_initializer=CONV_KERNEL_INITIALIZER,
+            name=f'{name}expand_conv',
+        )(inputs)
+
+        x = layers.BatchNormalization(axis=bn_axis, name=f'{name}expand_bn')(x)
+        x = layers.Activation(activation_fn, name=f'{name}expand_activation')(x)
     else:
         x = inputs
 
     # Depthwise Convolution
     if strides == 2:
-        x = layers.ZeroPadding2D(padding=correct_pad(backend, x, kernel_size),
-                                 name=name + 'dwconv_pad')(x)
+        x = layers.ZeroPadding2D(
+            padding=correct_pad(backend, x, kernel_size),
+            name=f'{name}dwconv_pad',
+        )(x)
+
         conv_pad = 'valid'
     else:
         conv_pad = 'same'
-    x = layers.DepthwiseConv2D(kernel_size,
-                               strides=strides,
-                               padding=conv_pad,
-                               use_bias=False,
-                               depthwise_initializer=CONV_KERNEL_INITIALIZER,
-                               name=name + 'dwconv')(x)
-    x = layers.BatchNormalization(axis=bn_axis, name=name + 'bn')(x)
-    x = layers.Activation(activation_fn, name=name + 'activation')(x)
+    x = layers.DepthwiseConv2D(
+        kernel_size,
+        strides=strides,
+        padding=conv_pad,
+        use_bias=False,
+        depthwise_initializer=CONV_KERNEL_INITIALIZER,
+        name=f'{name}dwconv',
+    )(x)
+
+    x = layers.BatchNormalization(axis=bn_axis, name=f'{name}bn')(x)
+    x = layers.Activation(activation_fn, name=f'{name}activation')(x)
 
     # Squeeze and Excitation phase
     if 0 < se_ratio <= 1:
         filters_se = max(1, int(filters_in * se_ratio))
-        se = layers.GlobalAveragePooling2D(name=name + 'se_squeeze')(x)
+        se = layers.GlobalAveragePooling2D(name=f'{name}se_squeeze')(x)
         if bn_axis == 1:
-            se = layers.Reshape((filters, 1, 1), name=name + 'se_reshape')(se)
+            se = layers.Reshape((filters, 1, 1), name=f'{name}se_reshape')(se)
         else:
-            se = layers.Reshape((1, 1, filters), name=name + 'se_reshape')(se)
-        se = layers.Conv2D(filters_se, 1,
-                           padding='same',
-                           activation=activation_fn,
-                           kernel_initializer=CONV_KERNEL_INITIALIZER,
-                           name=name + 'se_reduce')(se)
-        se = layers.Conv2D(filters, 1,
-                           padding='same',
-                           activation='sigmoid',
-                           kernel_initializer=CONV_KERNEL_INITIALIZER,
-                           name=name + 'se_expand')(se)
+            se = layers.Reshape((1, 1, filters), name=f'{name}se_reshape')(se)
+        se = layers.Conv2D(
+            filters_se,
+            1,
+            padding='same',
+            activation=activation_fn,
+            kernel_initializer=CONV_KERNEL_INITIALIZER,
+            name=f'{name}se_reduce',
+        )(se)
+
+        se = layers.Conv2D(
+            filters,
+            1,
+            padding='same',
+            activation='sigmoid',
+            kernel_initializer=CONV_KERNEL_INITIALIZER,
+            name=f'{name}se_expand',
+        )(se)
+
         if backend.backend() == 'theano':
             # For the Theano backend, we have to explicitly make
             # the excitation weights broadcastable.
             se = layers.Lambda(
-                lambda x: backend.pattern_broadcast(x, [True, True, True, False]),
+                lambda x: backend.pattern_broadcast(
+                    x, [True, True, True, False]
+                ),
                 output_shape=lambda input_shape: input_shape,
-                name=name + 'se_broadcast')(se)
-        x = layers.multiply([x, se], name=name + 'se_excite')
+                name=f'{name}se_broadcast',
+            )(se)
+
+        x = layers.multiply([x, se], name=f'{name}se_excite')
 
     # Output phase
-    x = layers.Conv2D(filters_out, 1,
-                      padding='same',
-                      use_bias=False,
-                      kernel_initializer=CONV_KERNEL_INITIALIZER,
-                      name=name + 'project_conv')(x)
-    x = layers.BatchNormalization(axis=bn_axis, name=name + 'project_bn')(x)
+    x = layers.Conv2D(
+        filters_out,
+        1,
+        padding='same',
+        use_bias=False,
+        kernel_initializer=CONV_KERNEL_INITIALIZER,
+        name=f'{name}project_conv',
+    )(x)
+
+    x = layers.BatchNormalization(axis=bn_axis, name=f'{name}project_bn')(x)
     if (id_skip is True and strides == 1 and filters_in == filters_out):
         if drop_rate > 0:
-            x = layers.Dropout(drop_rate,
-                               noise_shape=(None, 1, 1, 1),
-                               name=name + 'drop')(x)
-        x = layers.add([x, inputs], name=name + 'add')
+            x = layers.Dropout(
+                drop_rate, noise_shape=(None, 1, 1, 1), name=f'{name}drop'
+            )(x)
+
+        x = layers.add([x, inputs], name=f'{name}add')
 
     return x
 
@@ -301,10 +328,11 @@ def EfficientNet(width_coefficient,
     if input_tensor is None:
         img_input = layers.Input(shape=input_shape)
     else:
-        if not backend.is_keras_tensor(input_tensor):
-            img_input = layers.Input(tensor=input_tensor, shape=input_shape)
-        else:
-            img_input = input_tensor
+        img_input = (
+            input_tensor
+            if backend.is_keras_tensor(input_tensor)
+            else layers.Input(tensor=input_tensor, shape=input_shape)
+        )
 
     bn_axis = 3 if backend.image_data_format() == 'channels_last' else 1
 

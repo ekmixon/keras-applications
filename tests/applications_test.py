@@ -87,9 +87,10 @@ def keras_test(func):
     @six.wraps(func)
     def wrapper(*args, **kwargs):
         output = func(*args, **kwargs)
-        if backend.backend() == 'tensorflow' or backend.backend() == 'cntk':
+        if backend.backend() in ['tensorflow', 'cntk']:
             backend.clear_session()
         return output
+
     return wrapper
 
 
@@ -137,10 +138,9 @@ def _get_output_shape(model_fn, preprocess_input=None):
         model = model_fn()
         if preprocess_input is None:
             return model.output_shape
-        else:
-            x = _get_elephant(model.input_shape[1:3])
-            x = preprocess_input(x)
-            return (model.output_shape, model.predict(x))
+        x = _get_elephant(model.input_shape[1:3])
+        x = preprocess_input(x)
+        return (model.output_shape, model.predict(x))
 
 
 @keras_test

@@ -173,11 +173,7 @@ def MobileNet(input_shape=None,
             rows = input_shape[0]
             cols = input_shape[1]
 
-        if rows == cols and rows in [128, 160, 192, 224]:
-            default_size = rows
-        else:
-            default_size = 224
-
+        default_size = rows if rows == cols and rows in [128, 160, 192, 224] else 224
     input_shape = _obtain_input_shape(input_shape,
                                       default_size=default_size,
                                       min_size=32,
@@ -212,10 +208,11 @@ def MobileNet(input_shape=None,
     if input_tensor is None:
         img_input = layers.Input(shape=input_shape)
     else:
-        if not backend.is_keras_tensor(input_tensor):
-            img_input = layers.Input(tensor=input_tensor, shape=input_shape)
-        else:
-            img_input = input_tensor
+        img_input = (
+            input_tensor
+            if backend.is_keras_tensor(input_tensor)
+            else layers.Input(tensor=input_tensor, shape=input_shape)
+        )
 
     x = _conv_block(img_input, 32, alpha, strides=(2, 2))
     x = _depthwise_conv_block(x, 64, alpha, depth_multiplier, block_id=1)
@@ -241,10 +238,11 @@ def MobileNet(input_shape=None,
     x = _depthwise_conv_block(x, 1024, alpha, depth_multiplier, block_id=13)
 
     if include_top:
-        if backend.image_data_format() == 'channels_first':
-            shape = (int(1024 * alpha), 1, 1)
-        else:
-            shape = (1, 1, int(1024 * alpha))
+        shape = (
+            (int(1024 * alpha), 1, 1)
+            if backend.image_data_format() == 'channels_first'
+            else (1, 1, int(1024 * alpha))
+        )
 
         x = layers.GlobalAveragePooling2D()(x)
         x = layers.Reshape(shape, name='reshape_1')(x)
@@ -254,11 +252,10 @@ def MobileNet(input_shape=None,
                           name='conv_preds')(x)
         x = layers.Reshape((classes,), name='reshape_2')(x)
         x = layers.Activation('softmax', name='act_softmax')(x)
-    else:
-        if pooling == 'avg':
-            x = layers.GlobalAveragePooling2D()(x)
-        elif pooling == 'max':
-            x = layers.GlobalMaxPooling2D()(x)
+    elif pooling == 'avg':
+        x = layers.GlobalAveragePooling2D()(x)
+    elif pooling == 'max':
+        x = layers.GlobalMaxPooling2D()(x)
 
     # Ensure that the model takes into account
     # any potential predecessors of `input_tensor`.
@@ -272,27 +269,23 @@ def MobileNet(input_shape=None,
 
     # Load weights.
     if weights == 'imagenet':
-        if alpha == 1.0:
-            alpha_text = '1_0'
+        if alpha == 0.50:
+            alpha_text = '5_0'
         elif alpha == 0.75:
             alpha_text = '7_5'
-        elif alpha == 0.50:
-            alpha_text = '5_0'
+        elif alpha == 1.0:
+            alpha_text = '1_0'
         else:
             alpha_text = '2_5'
 
         if include_top:
             model_name = 'mobilenet_%s_%d_tf.h5' % (alpha_text, rows)
-            weight_path = BASE_WEIGHT_PATH + model_name
-            weights_path = keras_utils.get_file(model_name,
-                                                weight_path,
-                                                cache_subdir='models')
         else:
             model_name = 'mobilenet_%s_%d_tf_no_top.h5' % (alpha_text, rows)
-            weight_path = BASE_WEIGHT_PATH + model_name
-            weights_path = keras_utils.get_file(model_name,
-                                                weight_path,
-                                                cache_subdir='models')
+        weight_path = BASE_WEIGHT_PATH + model_name
+        weights_path = keras_utils.get_file(model_name,
+                                            weight_path,
+                                            cache_subdir='models')
         model.load_weights(weights_path)
     elif weights is not None:
         model.load_weights(weights)

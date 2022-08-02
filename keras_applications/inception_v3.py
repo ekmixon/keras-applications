@@ -61,15 +61,12 @@ def conv2d_bn(x,
         Output tensor after applying `Conv2D` and `BatchNormalization`.
     """
     if name is not None:
-        bn_name = name + '_bn'
-        conv_name = name + '_conv'
+        bn_name = f'{name}_bn'
+        conv_name = f'{name}_conv'
     else:
         bn_name = None
         conv_name = None
-    if backend.image_data_format() == 'channels_first':
-        bn_axis = 1
-    else:
-        bn_axis = 3
+    bn_axis = 1 if backend.image_data_format() == 'channels_first' else 3
     x = layers.Conv2D(
         filters, (num_row, num_col),
         strides=strides,
@@ -134,7 +131,7 @@ def InceptionV3(include_top=True,
     global backend, layers, models, keras_utils
     backend, layers, models, keras_utils = get_submodules_from_kwargs(kwargs)
 
-    if not (weights in {'imagenet', None} or os.path.exists(weights)):
+    if weights not in {'imagenet', None} and not os.path.exists(weights):
         raise ValueError('The `weights` argument should be either '
                          '`None` (random initialization), `imagenet` '
                          '(pre-training on ImageNet), '
@@ -156,16 +153,13 @@ def InceptionV3(include_top=True,
     if input_tensor is None:
         img_input = layers.Input(shape=input_shape)
     else:
-        if not backend.is_keras_tensor(input_tensor):
-            img_input = layers.Input(tensor=input_tensor, shape=input_shape)
-        else:
-            img_input = input_tensor
+        img_input = (
+            input_tensor
+            if backend.is_keras_tensor(input_tensor)
+            else layers.Input(tensor=input_tensor, shape=input_shape)
+        )
 
-    if backend.image_data_format() == 'channels_first':
-        channel_axis = 1
-    else:
-        channel_axis = 3
-
+    channel_axis = 1 if backend.image_data_format() == 'channels_first' else 3
     x = conv2d_bn(img_input, 32, 3, 3, strides=(2, 2), padding='valid')
     x = conv2d_bn(x, 32, 3, 3, padding='valid')
     x = conv2d_bn(x, 64, 3, 3)
@@ -288,7 +282,9 @@ def InceptionV3(include_top=True,
         x = layers.concatenate(
             [branch1x1, branch7x7, branch7x7dbl, branch_pool],
             axis=channel_axis,
-            name='mixed' + str(5 + i))
+            name=f'mixed{str(5 + i)}',
+        )
+
 
     # mixed 7: 17 x 17 x 768
     branch1x1 = conv2d_bn(x, 192, 1, 1)
@@ -339,7 +335,9 @@ def InceptionV3(include_top=True,
         branch3x3 = layers.concatenate(
             [branch3x3_1, branch3x3_2],
             axis=channel_axis,
-            name='mixed9_' + str(i))
+            name=f'mixed9_{str(i)}',
+        )
+
 
         branch3x3dbl = conv2d_bn(x, 448, 1, 1)
         branch3x3dbl = conv2d_bn(branch3x3dbl, 384, 3, 3)
@@ -354,16 +352,17 @@ def InceptionV3(include_top=True,
         x = layers.concatenate(
             [branch1x1, branch3x3, branch3x3dbl, branch_pool],
             axis=channel_axis,
-            name='mixed' + str(9 + i))
+            name=f'mixed{str(9 + i)}',
+        )
+
     if include_top:
         # Classification block
         x = layers.GlobalAveragePooling2D(name='avg_pool')(x)
         x = layers.Dense(classes, activation='softmax', name='predictions')(x)
-    else:
-        if pooling == 'avg':
-            x = layers.GlobalAveragePooling2D()(x)
-        elif pooling == 'max':
-            x = layers.GlobalMaxPooling2D()(x)
+    elif pooling == 'avg':
+        x = layers.GlobalAveragePooling2D()(x)
+    elif pooling == 'max':
+        x = layers.GlobalMaxPooling2D()(x)
 
     # Ensure that the model takes into account
     # any potential predecessors of `input_tensor`.
